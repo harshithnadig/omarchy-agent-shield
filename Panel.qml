@@ -30,7 +30,7 @@ Panel {
   property real savingsPct: 98.6
   property real latencyMs: 8.4
   property int totalEmbeddings: 99
-  property string activeModel: "qwen3-embedding:8b"
+  property string parentModel: "qwen3-embedding:8b"
 
   readonly property color fg: bar ? bar.foreground : Color.popups.text
   readonly property color bg: Color.popups.background
@@ -72,12 +72,7 @@ Panel {
     actionProc.running = true
   }
 
-  function openDashboard() {
-    actionProc.command = ["bash", scriptPath, "open-dashboard"]
-    actionProc.running = true
-  }
-
-  // Auto-refresh telemetry every 3 seconds while panel is open
+  // Auto-refresh telemetry every 3 seconds
   Timer {
     interval: 3000
     running: root.opened
@@ -107,7 +102,7 @@ Panel {
             root.savingsPct = data.telemetry.avg_savings_pct ? parseFloat(data.telemetry.avg_savings_pct.toFixed(1)) : 98.6
             root.latencyMs = data.telemetry.avg_latency_ms ? parseFloat(data.telemetry.avg_latency_ms.toFixed(1)) : 8.4
             root.totalEmbeddings = data.telemetry.total_embeddings_stored || 99
-            root.activeModel = data.telemetry.last_indexer_model || "qwen3-embedding:8b"
+            root.parentModel = data.telemetry.last_indexer_model || "qwen3-embedding:8b"
           }
         } catch(e) {}
       }
@@ -182,10 +177,10 @@ Panel {
           }
         }
 
-        // EMBEDDED LIVE OBSERVABILITY CARD
+        // EMBEDDED HIERARCHICAL MODEL CARD
         Rectangle {
           width: parent.width
-          height: Style.space(170)
+          height: Style.space(184)
           radius: Style.space(10)
           color: Qt.rgba(0.2, 0.6, 1.0, 0.08)
           border.color: Qt.rgba(0.2, 0.6, 1.0, 0.3)
@@ -194,14 +189,14 @@ Panel {
           ColumnLayout {
             anchors.fill: parent
             anchors.margins: Style.space(12)
-            spacing: Style.space(8)
+            spacing: Style.space(6)
 
-            // Header Model & Efficiency
+            // Header: Parent & Child Hierarchy
             RowLayout {
               Layout.fillWidth: true
               Text {
                 textFormat: Text.PlainText
-                text: "🧠 " + root.activeModel + " (NVIDIA RTX 4060)"
+                text: "👑 " + root.parentModel + " (RTX 4060 GPU)"
                 font.bold: true
                 color: "#58a6ff"
                 font.pixelSize: Style.font.caption
@@ -209,17 +204,25 @@ Panel {
               Item { Layout.fillWidth: true }
               Text {
                 textFormat: Text.PlainText
-                text: root.savingsPct + "% Quota Saved"
+                text: root.savingsPct + "% Saved"
                 font.bold: true
                 color: "#38ef7d"
                 font.pixelSize: Style.font.caption
               }
             }
 
+            // Child Models Sub-line
+            Text {
+              textFormat: Text.PlainText
+              text: "🐣 Children: bge-m3 (Dense Filter) + nomic (1ms CPU Scan)"
+              font.pixelSize: Style.space(9)
+              color: Qt.darker(root.fg, 1.4)
+            }
+
             // Progress Bar Gauge
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(8)
+              height: Style.space(7)
               radius: Style.space(4)
               color: Qt.rgba(1.0, 1.0, 1.0, 0.1)
               Rectangle {
@@ -240,7 +243,7 @@ Panel {
               // Metric 1: Saved Tokens
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(42)
+                height: Style.space(40)
                 radius: Style.space(6)
                 color: Qt.rgba(0.2, 0.8, 0.4, 0.1)
                 border.color: Qt.rgba(0.2, 0.8, 0.4, 0.25)
@@ -267,7 +270,7 @@ Panel {
               // Metric 2: Tokens Before vs After
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(42)
+                height: Style.space(40)
                 radius: Style.space(6)
                 color: Qt.rgba(1.0, 1.0, 1.0, 0.05)
                 border.color: Qt.rgba(1.0, 1.0, 1.0, 0.1)
@@ -294,7 +297,7 @@ Panel {
               // Metric 3: Vector Vault
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(36)
+                height: Style.space(32)
                 radius: Style.space(6)
                 color: Qt.rgba(1.0, 1.0, 1.0, 0.05)
                 border.color: Qt.rgba(1.0, 1.0, 1.0, 0.1)
@@ -313,7 +316,7 @@ Panel {
               // Metric 4: Latency & Power
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(36)
+                height: Style.space(32)
                 radius: Style.space(6)
                 color: Qt.rgba(1.0, 1.0, 1.0, 0.05)
                 border.color: Qt.rgba(1.0, 1.0, 1.0, 0.1)
@@ -369,7 +372,7 @@ Panel {
 
               Text {
                 textFormat: Text.PlainText
-                text: root.omniActive ? "Active: Local Qwen3-8B RAG Interception" : "Standby: Direct Native Proxy"
+                text: root.omniActive ? "Active: Hierarchical Qwen3 Cascade RAG" : "Standby: Direct Native Mode"
                 font.family: root.fontFam
                 font.pixelSize: Style.space(10)
                 color: Qt.darker(root.fg, 1.4)
