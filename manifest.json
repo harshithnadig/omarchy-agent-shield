@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "harshith.agent-shield",
+  "name": "Agent Quota Shield",
+  "version": "1.0.0",
+  "author": "Harshith Nadig",
+  "license": "MIT",
+  "description": "Visual 1-Click Control Panel for AI Agents: Toggle OmniRoute multi-model routing, adjust token compression limits, and protect Antigravity, Codex CLI, and ChatGPT Desktop.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Agent Shield",
+    "description": "Interactive 1-click control panel for OmniRoute and Agent Quota protection.",
+    "category": "Productivity",
+    "aliases": [
+      "agent-shield",
+      "shield",
+      "omniroute",
+      "quota",
+      "ai"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
