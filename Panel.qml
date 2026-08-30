@@ -63,9 +63,9 @@ Panel {
     actionProc.running = true
   }
 
-  function openDashboardTerminal() {
-    dashProc.command = ["hyprctl", "dispatch", "exec", "kitty --hold python3 /home/harshith/Work/omniroute-rag-gateway/dashboard.py"]
-    dashProc.running = true
+  function openDashboard() {
+    actionProc.command = ["bash", scriptPath, "open-dashboard"]
+    actionProc.running = true
   }
 
   Process {
@@ -92,11 +92,6 @@ Panel {
     id: actionProc
     running: false
     onExited: root.refresh()
-  }
-
-  Process {
-    id: dashProc
-    running: false
   }
 
   KeyboardPanel {
@@ -189,7 +184,9 @@ Panel {
               Layout.fillWidth: true
               height: Style.space(22)
               radius: Style.space(4)
-              color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.1)
+              color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12)
+              border.color: Qt.rgba(1.0, 1.0, 1.0, 0.15)
+              border.width: 1
 
               Text {
                 anchors.centerIn: parent
@@ -203,7 +200,7 @@ Panel {
               MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.openDashboardTerminal()
+                onClicked: root.openDashboard()
               }
             }
           }

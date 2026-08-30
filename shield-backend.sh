@@ -72,6 +72,16 @@ case "$cmd" in
     fi
     get_status_json
     ;;
+  open-dashboard)
+    if command -v foot &>/dev/null; then
+      nohup foot --hold python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
+    elif command -v kitty &>/dev/null; then
+      nohup kitty --hold python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
+    elif command -v alacritty &>/dev/null; then
+      nohup alacritty -e python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
+    fi
+    get_status_json
+    ;;
   *)
     get_status_json
     ;;
