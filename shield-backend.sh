@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 🛡️ TokenShield Visual Plugin Backend
+# 🛡️ TokenShield Visual Plugin Backend with Real-Time Hardware Sentinel
 set -euo pipefail
 
 PID_FILE="/tmp/tokenshield.pid"
@@ -31,7 +31,7 @@ get_status_json() {
     mode="Balanced (16k)"
   fi
 
-  # Extract live telemetry stats directly from SQLite
+  # Extract live telemetry & hardware vitals
   local telem_json="{}"
   if [[ -d "$GATEWAY_DIR" ]]; then
     telem_json=$(python3 -c "
@@ -39,7 +39,13 @@ import sys, json, os
 sys.path.insert(0, '$GATEWAY_DIR')
 try:
     from telemetry import get_aggregate_stats
+    from hardware_sentinel import HardwareSentinel
     stats = get_aggregate_stats()
+    gpu = HardwareSentinel.get_gpu_vitals()
+    state, msg = HardwareSentinel.evaluate_thermal_state()
+    stats['gpu_temp'] = gpu['temp_c']
+    stats['gpu_power'] = gpu['power_w']
+    stats['thermal_state'] = state
     print(json.dumps(stats))
 except Exception as e:
     print(json.dumps({'error': str(e)}))

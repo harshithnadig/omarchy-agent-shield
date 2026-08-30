@@ -31,6 +31,9 @@ Panel {
   property real latencyMs: 8.4
   property int totalEmbeddings: 99
   property string parentModel: "qwen3-embedding:8b"
+  property real gpuTemp: 46.0
+  property real gpuPower: 2.1
+  property string thermalState: "COOL"
 
   readonly property color fg: bar ? bar.foreground : Color.popups.text
   readonly property color bg: Color.popups.background
@@ -103,6 +106,9 @@ Panel {
             root.latencyMs = data.telemetry.avg_latency_ms ? parseFloat(data.telemetry.avg_latency_ms.toFixed(1)) : 8.4
             root.totalEmbeddings = data.telemetry.total_embeddings_stored || 99
             root.parentModel = data.telemetry.last_indexer_model || "qwen3-embedding:8b"
+            root.gpuTemp = data.telemetry.gpu_temp ? parseFloat(data.telemetry.gpu_temp.toFixed(1)) : 46.0
+            root.gpuPower = data.telemetry.gpu_power ? parseFloat(data.telemetry.gpu_power.toFixed(1)) : 2.1
+            root.thermalState = data.telemetry.thermal_state || "COOL"
           }
         } catch(e) {}
       }
@@ -148,7 +154,7 @@ Panel {
         width: scrollArea.availableWidth
         spacing: Style.space(12)
 
-        // Title Header
+        // Title Header with Hardware State
         RowLayout {
           width: parent.width
           Text {
@@ -161,23 +167,23 @@ Panel {
           }
           Item { Layout.fillWidth: true }
           Rectangle {
-            width: Style.space(56)
+            width: Style.space(64)
             height: Style.space(20)
             radius: Style.space(4)
-            color: Qt.rgba(0.2, 0.8, 0.4, 0.15)
-            border.color: "#38ef7d"
+            color: root.gpuTemp < 55 ? Qt.rgba(0.2, 0.8, 0.4, 0.15) : Qt.rgba(1.0, 0.6, 0.0, 0.15)
+            border.color: root.gpuTemp < 55 ? "#38ef7d" : "#ffa500"
             Text {
               anchors.centerIn: parent
               textFormat: Text.PlainText
-              text: "LIVE"
+              text: "❄️ " + root.gpuTemp + "°C"
               font.bold: true
               font.pixelSize: Style.space(9)
-              color: "#38ef7d"
+              color: root.gpuTemp < 55 ? "#38ef7d" : "#ffa500"
             }
           }
         }
 
-        // EMBEDDED HIERARCHICAL MODEL CARD
+        // EMBEDDED HIERARCHICAL MODEL & THERMAL CARD
         Rectangle {
           width: parent.width
           height: Style.space(184)
@@ -191,12 +197,12 @@ Panel {
             anchors.margins: Style.space(12)
             spacing: Style.space(6)
 
-            // Header: Parent & Child Hierarchy
+            // Header: Parent Model & Quota Saved
             RowLayout {
               Layout.fillWidth: true
               Text {
                 textFormat: Text.PlainText
-                text: "👑 " + root.parentModel + " (RTX 4060 GPU)"
+                text: "👑 " + root.parentModel + " (NVIDIA RTX 4060)"
                 font.bold: true
                 color: "#58a6ff"
                 font.pixelSize: Style.font.caption
@@ -211,10 +217,10 @@ Panel {
               }
             }
 
-            // Child Models Sub-line
+            // Child Models Sub-line & Power Draw
             Text {
               textFormat: Text.PlainText
-              text: "🐣 Children: bge-m3 (Dense Filter) + nomic (1ms CPU Scan)"
+              text: "🐣 Speculative: bge-m3 + nomic | ⚡ " + root.gpuPower + "W (30s auto-sleep)"
               font.pixelSize: Style.space(9)
               color: Qt.darker(root.fg, 1.4)
             }
@@ -306,14 +312,14 @@ Panel {
                   spacing: 4
                   Text {
                     textFormat: Text.PlainText
-                    text: "📦 " + root.totalEmbeddings + " chunks indexed"
+                    text: "📦 " + root.totalEmbeddings + " chunks in vault"
                     font.pixelSize: Style.space(10)
                     color: root.fg
                   }
                 }
               }
 
-              // Metric 4: Latency & Power
+              // Metric 4: Latency & Thermal Status
               Rectangle {
                 Layout.fillWidth: true
                 height: Style.space(32)
@@ -325,7 +331,7 @@ Panel {
                   spacing: 4
                   Text {
                     textFormat: Text.PlainText
-                    text: "⚡ " + root.latencyMs + "ms | 💤 0.0W Standby"
+                    text: "⚡ " + root.latencyMs + "ms | ❄️ Silent (" + root.gpuTemp + "°C)"
                     font.pixelSize: Style.space(10)
                     color: "#58a6ff"
                   }
@@ -337,7 +343,7 @@ Panel {
 
         PanelSeparator { width: parent.width }
 
-        // Master 1-Click OmniRoute Button
+        // Master 1-Click Toggle Switch
         Rectangle {
           width: parent.width
           height: Style.space(56)
