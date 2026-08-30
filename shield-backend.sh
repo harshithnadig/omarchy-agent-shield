@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 🛡️ Agent Quota Shield Visual Plugin Backend
+# 🛡️ TokenShield Visual Plugin Backend
 set -euo pipefail
 
-PID_FILE="/tmp/omniroute_rag_gateway.pid"
-GATEWAY_DIR="$HOME/Work/omniroute-rag-gateway"
+PID_FILE="/tmp/tokenshield.pid"
+GATEWAY_DIR="$HOME/Work/tokenshield"
 
-is_omniroute_active() {
+is_tokenshield_active() {
   if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     return 0
   else
@@ -15,7 +15,7 @@ is_omniroute_active() {
 
 get_status_json() {
   local omni_active=false
-  if is_omniroute_active; then
+  if is_tokenshield_active; then
     omni_active=true
   fi
 
@@ -29,6 +29,21 @@ get_status_json() {
     mode="Super Lean (8k)"
   elif [[ "$compact_limit" -ge 16000 ]]; then
     mode="Balanced (16k)"
+  fi
+
+  # Extract live telemetry stats directly from SQLite
+  local telem_json="{}"
+  if [[ -d "$GATEWAY_DIR" ]]; then
+    telem_json=$(python3 -c "
+import sys, json, os
+sys.path.insert(0, '$GATEWAY_DIR')
+try:
+    from telemetry import get_aggregate_stats
+    stats = get_aggregate_stats()
+    print(json.dumps(stats))
+except Exception as e:
+    print(json.dumps({'error': str(e)}))
+" 2>/dev/null || echo "{}")
   fi
 
   cat <<JSON
@@ -46,7 +61,8 @@ get_status_json() {
   "antigravity": {
     "status": "Active",
     "caching": "Enabled"
-  }
+  },
+  "telemetry": $telem_json
 }
 JSON
 }
@@ -54,7 +70,7 @@ JSON
 cmd="${1:-status}"
 case "$cmd" in
   toggle-omniroute)
-    if is_omniroute_active; then
+    if is_tokenshield_active; then
       local pid=$(cat "$PID_FILE" 2>/dev/null || true)
       kill "$pid" 2>/dev/null || true
       rm -f "$PID_FILE" 2>/dev/null || true
@@ -73,13 +89,7 @@ case "$cmd" in
     get_status_json
     ;;
   open-dashboard)
-    if command -v foot &>/dev/null; then
-      nohup foot --hold python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
-    elif command -v kitty &>/dev/null; then
-      nohup kitty --hold python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
-    elif command -v alacritty &>/dev/null; then
-      nohup alacritty -e python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
-    fi
+    nohup foot -T "TokenShield Live Analytics" --hold python3 "$GATEWAY_DIR/dashboard.py" >/dev/null 2>&1 &
     get_status_json
     ;;
   *)
