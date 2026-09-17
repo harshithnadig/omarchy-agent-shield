@@ -9,8 +9,10 @@ chmod 0700 "$RUNTIME_DIR"
 
 PID_FILE="$RUNTIME_DIR/tokenshield.pid"
 TELEMETRY_FILE="$STATE_DIR/telemetry.json"
-GATEWAY_SCRIPT="$HOME/Work/tokenshield/rag_compressor.py"
-DASHBOARD_SCRIPT="$HOME/Work/tokenshield/dashboard.py"
+TOKENSHIELD_DIR="${TOKENSHIELD_DIR:-$HOME/.local/share/tokenshield}"
+[[ -d "$HOME/Work/tokenshield" ]] && TOKENSHIELD_DIR="$HOME/Work/tokenshield"
+GATEWAY_SCRIPT="$TOKENSHIELD_DIR/rag_compressor.py"
+DASHBOARD_SCRIPT="$TOKENSHIELD_DIR/dashboard.py"
 
 is_tokenshield_active() {
   if [[ -f "$PID_FILE" && ! -L "$PID_FILE" ]]; then

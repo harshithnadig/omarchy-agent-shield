@@ -3,7 +3,7 @@
   "id": "harshith.agent-shield",
   "name": "Agent Quota Shield",
   "version": "1.0.0",
-  "author": "Harshith Nadig",
+  "author": "Agent Shield Contributors",
   "license": "MIT",
   "description": "Visual 1-Click Control Panel for AI Agents: Toggle OmniRoute multi-model routing, adjust token compression limits, and protect Antigravity, Codex CLI, and ChatGPT Desktop.",
   "kinds": [
