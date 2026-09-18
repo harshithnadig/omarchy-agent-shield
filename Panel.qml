@@ -24,16 +24,16 @@ Panel {
   property string codexMode: "Default (12k)"
 
   // Live Telemetry Properties
-  property int tokensBefore: 244180
-  property int tokensAfter: 3420
-  property int tokensSaved: 240760
-  property real savingsPct: 98.6
-  property real latencyMs: 8.4
-  property int totalEmbeddings: 99
-  property string parentModel: "qwen3-embedding:8b"
-  property real gpuTemp: 46.0
-  property real gpuPower: 2.1
-  property string thermalState: "COOL"
+  property int tokensBefore: -1
+  property int tokensAfter: -1
+  property int tokensSaved: -1
+  property real savingsPct: -1
+  property real latencyMs: -1
+  property int totalEmbeddings: -1
+  property string parentModel: ""
+  property real gpuTemp: -1
+  property real gpuPower: -1
+  property string thermalState: "UNKNOWN"
 
   readonly property color fg: bar ? bar.foreground : Color.popups.text
   readonly property color bg: Color.popups.background
@@ -52,6 +52,10 @@ Panel {
   function toggle() {
     if (root.opened) root.close()
     else root.open()
+  }
+
+  function telemetryNumber(value, fallback) {
+    return value !== null && value !== undefined && typeof value === "number" ? value : fallback
   }
 
   function switchPanel(direction) {
@@ -99,16 +103,16 @@ Panel {
             root.codexMode = data.codex.mode || "Default (12k)"
           }
           if (data.telemetry) {
-            root.tokensBefore = data.telemetry.total_tokens_before || 244180
-            root.tokensAfter = data.telemetry.total_tokens_after || 3420
-            root.tokensSaved = data.telemetry.total_tokens_saved || 240760
-            root.savingsPct = data.telemetry.avg_savings_pct ? parseFloat(data.telemetry.avg_savings_pct.toFixed(1)) : 98.6
-            root.latencyMs = data.telemetry.avg_latency_ms ? parseFloat(data.telemetry.avg_latency_ms.toFixed(1)) : 8.4
-            root.totalEmbeddings = data.telemetry.total_embeddings_stored || 99
-            root.parentModel = data.telemetry.last_indexer_model || "qwen3-embedding:8b"
-            root.gpuTemp = data.telemetry.gpu_temp ? parseFloat(data.telemetry.gpu_temp.toFixed(1)) : 46.0
-            root.gpuPower = data.telemetry.gpu_power ? parseFloat(data.telemetry.gpu_power.toFixed(1)) : 2.1
-            root.thermalState = data.telemetry.thermal_state || "COOL"
+            root.tokensBefore = root.telemetryNumber(data.telemetry.total_tokens_before, -1)
+            root.tokensAfter = root.telemetryNumber(data.telemetry.total_tokens_after, -1)
+            root.tokensSaved = root.telemetryNumber(data.telemetry.total_tokens_saved, -1)
+            root.savingsPct = root.telemetryNumber(data.telemetry.avg_savings_pct, -1)
+            root.latencyMs = root.telemetryNumber(data.telemetry.avg_latency_ms, -1)
+            root.totalEmbeddings = root.telemetryNumber(data.telemetry.total_embeddings_stored, -1)
+            root.parentModel = data.telemetry.last_indexer_model || ""
+            root.gpuTemp = root.telemetryNumber(data.telemetry.gpu_temp, -1)
+            root.gpuPower = root.telemetryNumber(data.telemetry.gpu_power, -1)
+            root.thermalState = data.telemetry.thermal_state || "UNKNOWN"
           }
         } catch(e) {}
       }
@@ -170,15 +174,15 @@ Panel {
             width: Style.space(64)
             height: Style.space(20)
             radius: Style.space(4)
-            color: root.gpuTemp < 55 ? Qt.rgba(0.2, 0.8, 0.4, 0.15) : Qt.rgba(1.0, 0.6, 0.0, 0.15)
-            border.color: root.gpuTemp < 55 ? "#38ef7d" : "#ffa500"
+            color: root.gpuTemp < 0 ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : (root.gpuTemp < 55 ? Qt.rgba(0.2, 0.8, 0.4, 0.15) : Qt.rgba(1.0, 0.6, 0.0, 0.15))
+            border.color: root.gpuTemp < 0 ? Qt.rgba(1.0, 1.0, 1.0, 0.2) : (root.gpuTemp < 55 ? "#38ef7d" : "#ffa500")
             Text {
               anchors.centerIn: parent
               textFormat: Text.PlainText
-              text: "❄️ " + root.gpuTemp + "°C"
+              text: root.gpuTemp >= 0 ? "❄️ " + root.gpuTemp.toFixed(1) + "°C" : "❄️ GPU N/A"
               font.bold: true
               font.pixelSize: Style.space(9)
-              color: root.gpuTemp < 55 ? "#38ef7d" : "#ffa500"
+              color: root.gpuTemp < 0 ? Qt.darker(root.fg, 1.3) : (root.gpuTemp < 55 ? "#38ef7d" : "#ffa500")
             }
           }
         }
@@ -202,17 +206,17 @@ Panel {
               Layout.fillWidth: true
               Text {
                 textFormat: Text.PlainText
-                text: "👑 " + root.parentModel + " (NVIDIA RTX 4060)"
+                text: root.parentModel !== "" ? "👑 " + root.parentModel : "◌ No model telemetry"
                 font.bold: true
-                color: "#58a6ff"
+                color: root.parentModel !== "" ? "#58a6ff" : Qt.darker(root.fg, 1.3)
                 font.pixelSize: Style.font.caption
               }
               Item { Layout.fillWidth: true }
               Text {
                 textFormat: Text.PlainText
-                text: root.savingsPct + "% Saved"
+                text: root.savingsPct >= 0 ? root.savingsPct.toFixed(1) + "% Saved" : "Savings N/A"
                 font.bold: true
-                color: "#38ef7d"
+                color: root.savingsPct >= 0 ? "#38ef7d" : Qt.darker(root.fg, 1.3)
                 font.pixelSize: Style.font.caption
               }
             }
@@ -220,7 +224,7 @@ Panel {
             // Child Models Sub-line & Power Draw
             Text {
               textFormat: Text.PlainText
-              text: "🐣 Speculative: bge-m3 + nomic | ⚡ " + root.gpuPower + "W (30s auto-sleep)"
+              text: root.gpuPower >= 0 ? "⚙️ " + root.thermalState + " | ⚡ " + root.gpuPower.toFixed(1) + "W" : "⚙️ " + root.thermalState + " | GPU telemetry unavailable"
               font.pixelSize: Style.space(9)
               color: Qt.darker(root.fg, 1.4)
             }
@@ -232,7 +236,7 @@ Panel {
               radius: Style.space(4)
               color: Qt.rgba(1.0, 1.0, 1.0, 0.1)
               Rectangle {
-                width: parent.width * (root.savingsPct / 100.0)
+                width: parent.width * (Math.max(0, Math.min(100, root.savingsPct)) / 100.0)
                 height: parent.height
                 radius: Style.space(4)
                 color: "#38ef7d"
@@ -258,7 +262,7 @@ Panel {
                   Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     textFormat: Text.PlainText
-                    text: root.tokensSaved.toLocaleString()
+                    text: root.tokensSaved >= 0 ? root.tokensSaved.toLocaleString() : "—"
                     font.bold: true
                     font.pixelSize: Style.space(13)
                     color: "#38ef7d"
@@ -285,7 +289,7 @@ Panel {
                   Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     textFormat: Text.PlainText
-                    text: root.tokensBefore.toLocaleString() + " ➔ " + root.tokensAfter.toLocaleString()
+                    text: root.tokensBefore >= 0 && root.tokensAfter >= 0 ? root.tokensBefore.toLocaleString() + " ➔ " + root.tokensAfter.toLocaleString() : "—"
                     font.bold: true
                     font.pixelSize: Style.space(11)
                     color: root.fg
@@ -312,7 +316,7 @@ Panel {
                   spacing: 4
                   Text {
                     textFormat: Text.PlainText
-                    text: "📦 " + root.totalEmbeddings + " chunks in vault"
+                    text: root.totalEmbeddings >= 0 ? "📦 " + root.totalEmbeddings + " chunks in vault" : "📦 Embedding telemetry unavailable"
                     font.pixelSize: Style.space(10)
                     color: root.fg
                   }
@@ -331,7 +335,7 @@ Panel {
                   spacing: 4
                   Text {
                     textFormat: Text.PlainText
-                    text: "⚡ " + root.latencyMs + "ms | ❄️ Silent (" + root.gpuTemp + "°C)"
+                    text: root.latencyMs >= 0 ? "⚡ " + root.latencyMs.toFixed(1) + "ms | ❄️ " + root.thermalState : "⚡ Latency unavailable | ❄️ " + root.thermalState
                     font.pixelSize: Style.space(10)
                     color: "#58a6ff"
                   }

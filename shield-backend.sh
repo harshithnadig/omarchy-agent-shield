@@ -4,22 +4,78 @@ set -euo pipefail
 
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tokenshield"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tokenshield"
-mkdir -p "$RUNTIME_DIR" "$STATE_DIR"
-chmod 0700 "$RUNTIME_DIR"
+
+ensure_private_directory() {
+  local directory="$1"
+  local owner
+
+  if [[ -L "$directory" || ( -e "$directory" && ! -d "$directory" ) ]]; then
+    echo "Refusing unsafe runtime path: $directory" >&2
+    return 1
+  fi
+  if [[ ! -d "$directory" ]]; then
+    (umask 077; mkdir "$directory")
+  fi
+  if [[ -L "$directory" || ! -d "$directory" ]]; then
+    echo "Refusing unsafe runtime path: $directory" >&2
+    return 1
+  fi
+  owner=$(stat -c '%u' -- "$directory" 2>/dev/null || true)
+  if [[ -z "$owner" ]]; then
+    owner=$(stat -f '%u' -- "$directory" 2>/dev/null || true)
+  fi
+  if [[ "$owner" != "$(id -u)" ]]; then
+    echo "Refusing runtime directory not owned by the current user: $directory" >&2
+    return 1
+  fi
+  chmod 0700 -- "$directory"
+}
+
+ensure_private_directory "$RUNTIME_DIR"
+mkdir -p -- "$(dirname "$STATE_DIR")"
+ensure_private_directory "$STATE_DIR"
 
 PID_FILE="$RUNTIME_DIR/tokenshield.pid"
 TELEMETRY_FILE="$STATE_DIR/telemetry.json"
-TOKENSHIELD_DIR="${TOKENSHIELD_DIR:-$HOME/.local/share/tokenshield}"
-[[ -d "$HOME/Work/tokenshield" ]] && TOKENSHIELD_DIR="$HOME/Work/tokenshield"
+if [[ -n "${TOKENSHIELD_DIR:-}" ]]; then
+  TOKENSHIELD_DIR="$TOKENSHIELD_DIR"
+elif [[ -d "$HOME/Work/tokenshield" ]]; then
+  TOKENSHIELD_DIR="$HOME/Work/tokenshield"
+else
+  TOKENSHIELD_DIR="$HOME/.local/share/tokenshield"
+fi
 GATEWAY_SCRIPT="$TOKENSHIELD_DIR/rag_compressor.py"
 DASHBOARD_SCRIPT="$TOKENSHIELD_DIR/dashboard.py"
+
+process_is_gateway() {
+  local pid="$1"
+  local cmdline
+
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
+  grep -Fqx -- "$GATEWAY_SCRIPT" <<<"$cmdline"
+}
+
+write_pid_file() {
+  local pid="$1"
+  local temporary
+
+  if [[ -d "$PID_FILE" ]]; then
+    echo "Refusing to overwrite a PID directory: $PID_FILE" >&2
+    return 1
+  fi
+  temporary=$(mktemp "$RUNTIME_DIR/.tokenshield.pid.XXXXXX")
+  chmod 0600 -- "$temporary"
+  printf '%s\n' "$pid" >"$temporary"
+  mv -f -- "$temporary" "$PID_FILE"
+}
 
 is_tokenshield_active() {
   if [[ -f "$PID_FILE" && ! -L "$PID_FILE" ]]; then
     local pid
     pid=$(cat "$PID_FILE" 2>/dev/null || true)
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-      if [[ -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "rag_compressor"; then
+      if process_is_gateway "$pid"; then
         return 0
       fi
     fi
@@ -29,9 +85,9 @@ is_tokenshield_active() {
 
 get_gpu_vitals() {
   # Read GPU vitals safely via nvidia-smi if available, without arbitrary code execution
-  local temp=46.0
-  local power=2.1
-  local state="COOL"
+  local temp="null"
+  local power="null"
+  local state="UNKNOWN"
 
   if command -v nvidia-smi >/dev/null 2>&1; then
     local nv_out
@@ -40,12 +96,14 @@ get_gpu_vitals() {
       local nv_temp nv_power
       nv_temp=$(echo "$nv_out" | awk -F',' '{print $1}' | tr -d ' ')
       nv_power=$(echo "$nv_out" | awk -F',' '{print $2}' | tr -d ' ')
-      if [[ "$nv_temp" =~ ^[0-9]+$ ]]; then
+      if [[ "$nv_temp" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
         temp="$nv_temp"
-        if (( nv_temp > 80 )); then
+        if awk "BEGIN { exit !($nv_temp > 80) }"; then
           state="THROTTLED"
-        elif (( nv_temp > 70 )); then
+        elif awk "BEGIN { exit !($nv_temp > 70) }"; then
           state="WARM"
+        else
+          state="COOL"
         fi
       fi
       if [[ "$nv_power" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
@@ -64,9 +122,11 @@ get_status_json() {
   fi
 
   local compact_limit=12000
+  local config_status="unavailable"
   if [[ -f "$HOME/.codex/config.toml" ]]; then
-    compact_limit=$(grep 'auto_compact_token_limit' "$HOME/.codex/config.toml" | grep -o '[0-9]*' | head -n 1 || echo 12000)
-    [[ -n "$compact_limit" ]] || compact_limit=12000
+    config_status="available"
+    compact_limit=$(grep -E '^[[:space:]]*auto_compact_token_limit[[:space:]]*=' "$HOME/.codex/config.toml" | head -n 1 | grep -o '[0-9][0-9]*' | head -n 1 || true)
+    [[ "$compact_limit" =~ ^[0-9]+$ ]] || compact_limit=12000
   fi
 
   local mode="Default (12k)"
@@ -76,24 +136,28 @@ get_status_json() {
     mode="Balanced (16k)"
   fi
 
-  # Data-only telemetry interface (no dynamic imports from external directories)
+  # Data-only telemetry interface (no dynamic imports from external directories).
+  # Reject symlinks and oversized/malformed state before embedding it in JSON.
   local telem_json="{}"
   if [[ -f "$TELEMETRY_FILE" && ! -L "$TELEMETRY_FILE" ]]; then
-    telem_json=$(cat "$TELEMETRY_FILE" 2>/dev/null || echo "{}")
-  else
+    local telemetry_size
+    telemetry_size=$(stat -c '%s' -- "$TELEMETRY_FILE" 2>/dev/null || echo 1048577)
+    if [[ "$telemetry_size" =~ ^[0-9]+$ ]] && (( telemetry_size <= 1048576 )); then
+      local candidate
+      candidate=$(cat -- "$TELEMETRY_FILE" 2>/dev/null || true)
+      if jq -e -c 'type == "object"' >/dev/null 2>&1 <<<"$candidate"; then
+        telem_json=$(jq -c '.' <<<"$candidate")
+      fi
+    fi
+  fi
+  if [[ "$telem_json" == "{}" ]]; then
     local vitals
     vitals=$(get_gpu_vitals)
-    telem_json=$(printf '{
-      "total_tokens_before": 244180,
-      "total_tokens_after": 3420,
-      "total_tokens_saved": 240760,
-      "avg_savings_pct": 98.6,
-      "avg_latency_ms": 8.4,
-      "total_embeddings_stored": 99,
-      "last_indexer_model": "qwen3-embedding:8b",
-      %s
-    }' "${vitals:1:-1}")
+    telem_json="$vitals"
   fi
+
+  local antigravity_status="Not detected"
+  command -v agy >/dev/null 2>&1 && antigravity_status="Available"
 
   cat <<JSON
 {
@@ -105,11 +169,10 @@ get_status_json() {
   "codex": {
     "compact_limit": $compact_limit,
     "mode": "$mode",
-    "status": "Protected"
+    "status": "$config_status"
   },
   "antigravity": {
-    "status": "Active",
-    "caching": "Enabled"
+    "status": "$antigravity_status"
   },
   "telemetry": $telem_json
 }
@@ -124,7 +187,7 @@ main() {
         local pid
         pid=$(cat "$PID_FILE" 2>/dev/null || true)
         if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-          if [[ -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "rag_compressor"; then
+          if process_is_gateway "$pid"; then
             kill "$pid" 2>/dev/null || true
           fi
         fi
@@ -132,7 +195,11 @@ main() {
       else
         if [[ -f "$GATEWAY_SCRIPT" ]]; then
           python3 "$GATEWAY_SCRIPT" >/dev/null 2>&1 &
-          echo $! > "$PID_FILE"
+          local gateway_pid=$!
+          if ! write_pid_file "$gateway_pid"; then
+            kill "$gateway_pid" 2>/dev/null || true
+            return 1
+          fi
         fi
       fi
       get_status_json
