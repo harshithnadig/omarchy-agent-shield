@@ -28,7 +28,7 @@ Reads `~/.codex/config.toml`; preset buttons request edits to
 `auto_compact_token_limit`. Routing controls start/stop only a gateway whose
 PID is stored in a private `$XDG_RUNTIME_DIR/tokenshield` directory and whose
 `/proc/<pid>/cmdline` still names the configured `rag_compressor.py`. The
-dashboard opens foot. Back up Codex configuration before using presets.
+dashboard opens foot. Presets are limited to 8k, 12k, and 16k. Before a preset change, the plugin saves an owner-only timestamped backup next to the Codex configuration; if the setting is missing, it adds it at the top level.
 Removal does not restore configuration or stop a separately running gateway.
 
 ### Current limitations

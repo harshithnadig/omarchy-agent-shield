@@ -206,8 +206,66 @@ main() {
       ;;
     set-mode)
       local target="${2:-12000}"
-      if [[ "$target" =~ ^[0-9]+$ ]] && [[ -f "$HOME/.codex/config.toml" ]]; then
-        sed -i "s/auto_compact_token_limit = .*/auto_compact_token_limit = $target/" "$HOME/.codex/config.toml"
+      case "$target" in
+        8000|12000|16000) ;;
+        *) echo "Unsupported preset: $target" >&2; return 2 ;;
+      esac
+      local config="$HOME/.codex/config.toml"
+      if [[ -f "$config" && ! -L "$config" ]]; then
+        python3 - "$config" "$target" <<'PYCONFIG'
+import os
+import re
+import shutil
+import sys
+import tempfile
+import time
+import tomllib
+from pathlib import Path
+
+config = Path(sys.argv[1])
+target = sys.argv[2]
+original = config.read_text(encoding="utf-8")
+tomllib.loads(original)
+lines = original.splitlines(keepends=True)
+section = False
+found = False
+updated = []
+for line in lines:
+    if re.match(r"\s*\[", line):
+        section = True
+    if not section and re.match(r"\s*auto_compact_token_limit\s*=", line):
+        if not found:
+            ending = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            updated.append(f"auto_compact_token_limit = {target}{ending}")
+            found = True
+        else:
+            updated.append(line)
+    else:
+        updated.append(line)
+if not found:
+    index = next((i for i, line in enumerate(updated) if re.match(r"\s*\[", line)), len(updated))
+    updated.insert(index, f"auto_compact_token_limit = {target}\n")
+content = "".join(updated)
+tomllib.loads(content)
+stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+backup = config.with_name(config.name + ".bak." + stamp)
+if backup.exists():
+    backup = config.with_name(config.name + ".bak." + stamp + "." + str(os.getpid()))
+shutil.copy2(config, backup)
+os.chmod(backup, 0o600)
+fd, temporary = tempfile.mkstemp(prefix=".config.toml.", dir=config.parent)
+try:
+    os.fchmod(fd, config.stat().st_mode & 0o777)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+        handle.write(content)
+    os.replace(temporary, config)
+except BaseException:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+    raise
+PYCONFIG
       fi
       get_status_json
       ;;
