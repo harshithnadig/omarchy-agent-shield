@@ -75,9 +75,17 @@ is_tokenshield_active() {
     local pid
     pid=$(cat "$PID_FILE" 2>/dev/null || true)
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-      if process_is_gateway "$pid"; then
+      if process_is_gateway "$pid" || grep -q "tokenshield" "/proc/$pid/cmdline" 2>/dev/null; then
         return 0
       fi
+    fi
+  fi
+  if [[ -d "$TOKENSHIELD_DIR" ]]; then
+    if systemctl --user is-active --quiet tokenshield 2>/dev/null; then
+      return 0
+    fi
+    if curl -s -m 1 http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status"[[:space:]]*:[[:space:]]*"ONLINE"'; then
+      return 0
     fi
   fi
   return 1
@@ -184,21 +192,32 @@ main() {
   case "$cmd" in
     toggle-omniroute)
       if is_tokenshield_active; then
+        systemctl --user stop tokenshield 2>/dev/null || true
         local pid
         pid=$(cat "$PID_FILE" 2>/dev/null || true)
         if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-          if process_is_gateway "$pid"; then
-            kill "$pid" 2>/dev/null || true
-          fi
+          kill "$pid" 2>/dev/null || true
         fi
         rm -f "$PID_FILE"
+        pkill -u "$(id -u)" -f "tokenshield.*proxy" 2>/dev/null || true
       else
-        if [[ -f "$GATEWAY_SCRIPT" ]]; then
-          python3 "$GATEWAY_SCRIPT" >/dev/null 2>&1 &
-          local gateway_pid=$!
-          if ! write_pid_file "$gateway_pid"; then
-            kill "$gateway_pid" 2>/dev/null || true
-            return 1
+        if systemctl --user start tokenshield 2>/dev/null; then
+          sleep 0.5
+        else
+          local bin=""
+          if command -v tokenshield >/dev/null 2>&1; then
+            bin="tokenshield"
+          elif [[ -x "$HOME/.local/bin/tokenshield" ]]; then
+            bin="$HOME/.local/bin/tokenshield"
+          elif [[ -x "$TOKENSHIELD_DIR/.venv/bin/tokenshield" ]]; then
+            bin="$TOKENSHIELD_DIR/.venv/bin/tokenshield"
+          elif [[ -f "$GATEWAY_SCRIPT" ]]; then
+            bin="python3 $GATEWAY_SCRIPT"
+          fi
+          if [[ -n "$bin" ]]; then
+            $bin proxy >/dev/null 2>&1 &
+            local gateway_pid=$!
+            write_pid_file "$gateway_pid" || true
           fi
         fi
       fi
@@ -270,8 +289,18 @@ PYCONFIG
       get_status_json
       ;;
     open-dashboard)
+      local dash_cmd=""
       if [[ -f "$DASHBOARD_SCRIPT" ]]; then
-        nohup foot -T "TokenShield Live Analytics" --hold python3 "$DASHBOARD_SCRIPT" >/dev/null 2>&1 &
+        dash_cmd="python3 \"$DASHBOARD_SCRIPT\""
+      elif command -v tokenshield >/dev/null 2>&1; then
+        dash_cmd="tokenshield dashboard"
+      elif [[ -x "$HOME/.local/bin/tokenshield" ]]; then
+        dash_cmd="$HOME/.local/bin/tokenshield dashboard"
+      elif [[ -x "$TOKENSHIELD_DIR/.venv/bin/tokenshield" ]]; then
+        dash_cmd="$TOKENSHIELD_DIR/.venv/bin/tokenshield dashboard"
+      fi
+      if [[ -n "$dash_cmd" ]]; then
+        nohup foot -T "TokenShield Live Analytics" --hold bash -c "$dash_cmd" >/dev/null 2>&1 &
       fi
       get_status_json
       ;;

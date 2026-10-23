@@ -8,7 +8,7 @@ This section describes the current implementation and takes precedence over broa
 
 Requires Omarchy Quattro's plugin-capable shell, Qt 6 / QtQuick / QtQuick.Controls / QtQuick.Layouts, Quickshell and Omarchy qs.Commons / qs.Ui modules. This is not a standalone QML application.
 
-Bash, Python 3, jq, grep, sed, GNU coreutils and foot. Requires a separately configured tokenshield installation (at `$TOKENSHIELD_DIR`, `~/.local/share/tokenshield`, or `~/Work/tokenshield`) providing `rag_compressor.py` and `dashboard.py`; these are not bundled or installed.
+Bash, Python 3, jq, grep, sed, GNU coreutils and foot. Integrates with TokenShield 3.0.0 (via systemd user service `tokenshield.service`, `tokenshield` CLI, or `$TOKENSHIELD_DIR`) providing live proxy monitoring and `tokenshield dashboard`.
 
 ### Install
 
